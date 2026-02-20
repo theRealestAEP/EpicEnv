@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,14 +22,38 @@ var (
 )
 
 func readStdinHidden(prompt string) string {
-	fmt.Print(prompt)
-	// IDE might complain, but the cast is necessary for some OSs, because Stdin is a var instead of an untyped const
-	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
-	if err != nil {
-		panic(err)
+	// IDE might complain, but the cast is necessary for some OSs, because Stdin is a var instead of an untyped const.
+	stdinFD := int(syscall.Stdin)
+	isTerminal := term.IsTerminal(stdinFD)
+	if isTerminal {
+		fmt.Print(prompt)
 	}
-	fmt.Println() // Move to the next line after input
-	return string(bytePassword)
+
+	value, err := readInputValue(os.Stdin, stdinFD, isTerminal)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("error reading stdin input")
+	}
+
+	if isTerminal {
+		fmt.Println() // Move to the next line after input.
+	}
+	return value
+}
+
+func readInputValue(input io.Reader, stdinFD int, isTerminal bool) (string, error) {
+	if isTerminal {
+		bytePassword, err := term.ReadPassword(stdinFD)
+		if err != nil {
+			return "", err
+		}
+		return string(bytePassword), nil
+	}
+
+	byteValue, err := io.ReadAll(input)
+	if err != nil {
+		return "", err
+	}
+	return string(byteValue), nil
 }
 
 var ErrEnvDirNotFound = errors.New("epicenv directory not found")
