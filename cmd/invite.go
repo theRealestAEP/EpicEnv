@@ -76,7 +76,16 @@ func runInvite(cmd *cobra.Command, args []string) {
 			logger.Fatal().Err(err).Msgf("error reading key file %s", pathFlag)
 		}
 
-		publicKey := strings.TrimSpace(string(keyData))
+		// Normalize to "<keytype> <base64>", matching the format that
+		// github.com/{user}.keys returns for GitHub-invited users. Local
+		// .pub files typically carry a trailing comment (e.g. "user@host")
+		// which would cause mismatches on the reading side, where the
+		// local file is normalized to two fields before comparison.
+		fields := strings.Fields(string(keyData))
+		if len(fields) < 2 {
+			logger.Fatal().Msgf("public key file %s does not contain a valid key (expected '<keytype> <base64>')", pathFlag)
+		}
+		publicKey := fields[0] + " " + fields[1]
 		foundKeys = []string{publicKey}
 	} else {
 		// Handle GitHub user
