@@ -42,8 +42,9 @@ func getEnvOrFlag(cmd *cobra.Command) string {
 }
 
 type loadedEnvVar struct {
-	Value    string
-	Personal bool
+	Value       string
+	Personal    bool
+	PersonalSet bool // true when value was loaded from personal_secrets.json
 }
 
 // loadEnv will short circuit fatal exit if it has an unrecoverable error.
@@ -128,8 +129,9 @@ func loadEnvLayer(env string, symKey []byte, envMap map[string]loadedEnvVar) {
 					logger.Fatal().Err(err).Msgf("error decrypting personal environment variable %s", item.Name)
 				}
 				envMap[item.Name] = loadedEnvVar{
-					Value:    decrypted,
-					Personal: true,
+					Value:       decrypted,
+					Personal:    true,
+					PersonalSet: true,
 				}
 			}
 		}
