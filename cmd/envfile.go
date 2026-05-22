@@ -27,6 +27,10 @@ func runEnvfile(cmd *cobra.Command, args []string) {
 
 	// Output in .env format
 	for key, val := range envMap {
+		if val.Personal && !val.PersonalSet {
+			continue
+		}
+
 		// Escape backslashes in the value
 		escapedValue := escapeBackslashes(val.Value)
 
