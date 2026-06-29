@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -41,5 +42,11 @@ func runEnvfile(cmd *cobra.Command, args []string) {
 }
 
 func formatEnvfileValue(s string) string {
-	return s
+	if !strings.Contains(s, `'`) {
+		return `'` + s + `'`
+	}
+	if !strings.Contains(s, `"`) && !strings.Contains(s, `\`) {
+		return `"` + s + `"`
+	}
+	return "`" + s + "`"
 }

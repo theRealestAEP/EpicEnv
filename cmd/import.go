@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"os"
 	"strings"
+	"unicode"
 )
 
 // importCmd represents the import command
@@ -31,27 +31,104 @@ func runImport(cmd *cobra.Command, args []string) {
 		logger.Fatal().Err(err).Msgf("error reading %s", envPath)
 	}
 
-	lines := strings.Split(string(fileContent), "\n")
-	lines = lo.Filter(lines, func(item string, index int) bool {
-		return item != "" && len(strings.SplitN(item, "=", 2)) == 2
-	})
-
-	loadedEnvMap := lo.Associate(lines, func(item string) (string, string) {
-		parts := strings.SplitN(item, "=", 2)
-		return parts[0], parts[1]
-	})
-
-	logger.Debug().Interface("loadedEnvVars", lo.Keys(loadedEnvMap)).Msg("loaded env map")
+	loadedEnvMap := map[string]importedEnvfileVar{}
+	for _, line := range strings.Split(string(fileContent), "\n") {
+		key, val, personal, ok := parseEnvfileLine(line)
+		if !ok {
+			continue
+		}
+		loadedEnvMap[key] = importedEnvfileVar{
+			value:    val,
+			personal: personal,
+		}
+	}
 
 	for key, val := range loadedEnvMap {
-		personal := false
-		if strings.HasSuffix(val, "#personal") {
+		if val.personal {
 			logger.Info().Msgf("importing \"%s\" as personal", key)
-			personal = true
-			val = strings.TrimSpace(strings.Split(val, "#personal")[0])
 		}
-		setEnvVar(env, key, val, personal)
+		setEnvVar(env, key, val.value, val.personal)
 	}
 
 	logger.Info().Msgf("Imported %d variables from %s", len(loadedEnvMap), envPath)
+}
+
+type importedEnvfileVar struct {
+	value    string
+	personal bool
+}
+
+func parseEnvfileLine(line string) (string, string, bool, bool) {
+	if line == "" {
+		return "", "", false, false
+	}
+
+	parts := strings.SplitN(line, "=", 2)
+	if len(parts) != 2 {
+		return "", "", false, false
+	}
+
+	val, personal := parseEnvfileValue(parts[1])
+	return parts[0], val, personal, true
+}
+
+func parseEnvfileValue(s string) (string, bool) {
+	if strings.HasPrefix(s, `"`) || strings.HasPrefix(s, `'`) || strings.HasPrefix(s, "`") {
+		return parseQuotedEnvfileValue(s)
+	}
+
+	trimmed := strings.TrimRightFunc(s, unicode.IsSpace)
+	if strings.HasSuffix(trimmed, "#personal") {
+		markerStart := len(trimmed) - len("#personal")
+		if markerStart > 0 && unicode.IsSpace(rune(trimmed[markerStart-1])) {
+			return strings.TrimSpace(trimmed[:markerStart]), true
+		}
+	}
+
+	return s, false
+}
+
+func parseQuotedEnvfileValue(s string) (string, bool) {
+	var b strings.Builder
+	escaped := false
+	quote := s[0]
+
+	if quote == '`' {
+		end := strings.LastIndex(s, "`")
+		if end > 0 {
+			return s[1:end], strings.TrimSpace(s[end+1:]) == "#personal"
+		}
+		return s, false
+	}
+
+	for i := 1; i < len(s); i++ {
+		ch := s[i]
+
+		if escaped && quote == '"' {
+			if ch == '\\' || ch == '"' {
+				b.WriteByte(ch)
+			} else {
+				b.WriteByte('\\')
+				b.WriteByte(ch)
+			}
+			escaped = false
+			continue
+		}
+
+		if ch == '\\' && quote == '"' {
+			escaped = true
+			continue
+		}
+
+		if ch == quote {
+			return b.String(), strings.TrimSpace(s[i+1:]) == "#personal"
+		}
+
+		b.WriteByte(ch)
+	}
+
+	if escaped {
+		b.WriteByte('\\')
+	}
+	return s, false
 }
