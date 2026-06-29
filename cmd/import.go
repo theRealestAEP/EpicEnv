@@ -89,46 +89,17 @@ func parseEnvfileValue(s string) (string, bool) {
 }
 
 func parseQuotedEnvfileValue(s string) (string, bool) {
-	var b strings.Builder
-	escaped := false
 	quote := s[0]
-
-	if quote == '`' {
-		end := strings.LastIndex(s, "`")
-		if end > 0 {
-			return s[1:end], strings.TrimSpace(s[end+1:]) == "#personal"
+	end := strings.LastIndex(s, string(quote))
+	if end > 0 {
+		value := s[1:end]
+		if quote == '"' && strings.Contains(value, `\"`) {
+			value = strings.NewReplacer(
+				`\\`, `\`,
+				`\"`, `"`,
+			).Replace(value)
 		}
-		return s, false
-	}
-
-	for i := 1; i < len(s); i++ {
-		ch := s[i]
-
-		if escaped && quote == '"' {
-			if ch == '\\' || ch == '"' {
-				b.WriteByte(ch)
-			} else {
-				b.WriteByte('\\')
-				b.WriteByte(ch)
-			}
-			escaped = false
-			continue
-		}
-
-		if ch == '\\' && quote == '"' {
-			escaped = true
-			continue
-		}
-
-		if ch == quote {
-			return b.String(), strings.TrimSpace(s[i+1:]) == "#personal"
-		}
-
-		b.WriteByte(ch)
-	}
-
-	if escaped {
-		b.WriteByte('\\')
+		return value, strings.TrimSpace(s[end+1:]) == "#personal"
 	}
 	return s, false
 }
